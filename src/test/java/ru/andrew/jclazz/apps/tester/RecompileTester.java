@@ -12,24 +12,28 @@ public class RecompileTester implements Tester, FileFilter
     private String javac;
     private boolean isPrecompile;
     private String buildDir;
+    private String decompileDir;
     private String testDir;
+    private String recompileDir;
+
+    public static final String BUILD_DIR = "../target/build";
+    public static final String RECOMPILE_DIR = "../target/recompiled";
+    public static final String DECOMPILE_DIR = "../target/decompiled";
+
+    String fs = System.getProperty("file.separator");
 
     public RecompileTester(Map params)
     {
         isPrecompile = "yes".equals(params.get(Params.RCT_PRECOMPILE));
 
-        String fs = System.getProperty("file.separator");
         String javaHome = (String) params.get(Params.RCT_JAVA_HOME);
         if (javaHome == null || "".equals(javaHome))
         {
             throw new RuntimeException("No " + Params.RCT_JAVA_HOME + " specified");
         }
-        this.javac = javaHome + fs + "bin" + fs + "javac";
+        javac = javaHome + fs + "bin" + fs + "javac";
 
         testDir = (String) params.get(Params.TESTS_DIR);
-
-        // Adding sourcedir
-        this.javac += " -sourcepath " + testDir;
 
         if (params.get(Params.RCT_JAVAC_ARGS) != null)
         {
@@ -37,9 +41,42 @@ public class RecompileTester implements Tester, FileFilter
         }
 
         // Creating build directory
-        File bdir = new File(params.get(Params.TESTS_DIR) + fs + "\\_build");
+        buildDir = buildPath(BUILD_DIR);
+        decompileDir = buildPath(DECOMPILE_DIR);
+        recompileDir = buildPath(RECOMPILE_DIR);
+
+    }
+
+    private String buildPath(String dir) {
+        File bdir = new File(testDir + fs + dir);
+        deleteRecursively(bdir);
         bdir.mkdir();
-        buildDir = bdir.getAbsolutePath();
+        return bdir.getAbsolutePath();
+    }
+
+    public void deleteRecursively(String path) {
+        File file = new File(path);
+        deleteRecursively(file);
+    }
+
+    private void deleteRecursively(File file) {
+        File[] currList;
+        Stack<File> stack = new Stack<File>();
+        stack.push(file);
+        while (! stack.isEmpty()) {
+            if (stack.lastElement().isDirectory()) {
+                currList = stack.lastElement().listFiles();
+                if (currList.length > 0) {
+                    for (File curr: currList) {
+                        stack.push(curr);
+                    }
+                } else {
+                    stack.pop().delete();
+                }
+            } else {
+                stack.pop().delete();
+            }
+        }
     }
 
     public String getName()
@@ -54,28 +91,39 @@ public class RecompileTester implements Tester, FileFilter
             Map params = new HashMap();
             params.put(Params.EXTENSION, "java");
                     
-            String compiledName = file.getAbsolutePath();
-            compiledName = compiledName.substring(0, compiledName.lastIndexOf('.'));
+            String fileAbsolutePath = file.getAbsolutePath();
+            String fileWithoutExtension = fileAbsolutePath.substring(0, fileAbsolutePath.lastIndexOf('.'));
 
             if (isPrecompile)
             {
-                boolean res = execJavac(javac, file.getAbsolutePath());
-                String nn = compiledName + ".java_orig";
-                file.renameTo(new File(nn));
-                if (!res) return false;
+                boolean res = execJavac(javac + " -sourcepath " + testDir + " -verbose -d " +buildDir, fileAbsolutePath);
+                if (!res) {
+                    return false;
+                }
             }
 
-            String outFile = ClassDecompiler.generateJavaFile(compiledName, params);
+            int lasfIndexFs = fileWithoutExtension.lastIndexOf(fs);
+            String originalPath = fileWithoutExtension.substring(0, lasfIndexFs);
+            File originalDir = new File(originalPath);
 
-            boolean res = execJavac(javac + " -d \"" + buildDir + "\"", outFile);
+            String clname = fileWithoutExtension.substring(lasfIndexFs + 1);
 
-            // Renaming to prevent looping
-            File outJavaFile = new File(outFile);
-            outJavaFile.renameTo(new File(outJavaFile.getAbsolutePath() + ".post"));
+            // Calculating destination directory
+            String packageDir = originalDir.getAbsolutePath();
+            packageDir = packageDir.substring(testDir.length()+1);
 
-            if (!res) return false;
 
-            return compare(compiledName);
+            params.put(Params.OUT_FILE, decompileDir + fs + packageDir + fs + clname + ".java");
+
+            String outFile = ClassDecompiler.generateJavaFile(buildDir + fs + packageDir + fs + clname + ".class", params);
+
+            boolean res = execJavac(javac + " -sourcepath " + decompileDir + " -verbose -d " +recompileDir, outFile);
+
+            if (!res) {
+                return false;
+            }
+
+            return compare(fileWithoutExtension);
         }
         catch (ClazzException e)
         {
@@ -118,12 +166,9 @@ public class RecompileTester implements Tester, FileFilter
         return false;
     }
 
-    private boolean compare(String path)
+    private boolean compare(final String clname)
     {
-        String fs = System.getProperty("file.separator");
-        String originalPath = path.substring(0, path.lastIndexOf(fs));
-        final String clname = path.substring(path.lastIndexOf(fs) + 1);
-        File originalDir = new File(originalPath);
+        File originalDir = new File(buildDir);
         File[] origFiles = originalDir.listFiles(new FilenameFilter()
         {
             public boolean accept(File dir, String name)
@@ -137,10 +182,11 @@ public class RecompileTester implements Tester, FileFilter
         packageDir = packageDir.substring(testDir.length());
 
         boolean res = true;
-        for (int i = 0; i < origFiles.length; i++)
+        for (int i = 0; i < origFiles.length && res; i++)
         {
             String testFile = buildDir + packageDir + fs + origFiles[i].getName();
-            res &= FileComparator.compare(origFiles[i].getAbsolutePath(), testFile);
+            String orgFile = recompileDir + packageDir + fs + origFiles[i].getName();
+            res &= FileComparator.compare(orgFile, testFile);
         }
 
         return res;
@@ -168,6 +214,6 @@ public class RecompileTester implements Tester, FileFilter
                 return true;
             }
         }
-        return pathname.isDirectory();
+        return pathname.isDirectory() && !RECOMPILE_DIR.equals(pathname.getName());
     }
 }
