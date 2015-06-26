@@ -12,8 +12,8 @@ public final class FileComparator
         byte b2[] = new byte[1024 * 1024];
         try
         {
-            fis1 = new FileInputStream(path1);
-            fis2 = new FileInputStream(path2);
+            fis1 = new NoNewLineFileInputStream(path1);
+            fis2 = new NoNewLineFileInputStream(path2);
 
             do
             {
@@ -29,9 +29,11 @@ public final class FileComparator
                     return false;
                 }
 
-                for (int i = 0; i < b1.length; i++)
+                for (int i = 0; i < res1; i++)
                 {
-                    if (b1[i] != b2[i]) return false;
+                    if (b1[i] != b2[i]) {
+                        return false;
+                    }
                 }
             }
             while (true);
@@ -59,3 +61,4 @@ public final class FileComparator
         }
     }
 }
+
