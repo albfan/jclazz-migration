@@ -28,6 +28,7 @@ public final class ClassDecompiler
             }
         }
 
+        new File(outFile.substring(0, outFile.lastIndexOf('/')+1)).mkdirs();
         ClassPrinter cp = new ClassPrinter(new FileOutputStream(outFile));
         cp.print(clazz, true);
         cp.close();
