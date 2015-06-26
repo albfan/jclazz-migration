@@ -109,6 +109,12 @@ public class RecompileTester implements Tester, FileFilter
         {
             System.out.println(line);
         }
+        br = new BufferedReader(new InputStreamReader(wrapper.getInputStream()));
+        while ((line = br.readLine()) != null)
+        {
+            System.out.println(line);
+        }
+
         return false;
     }
 

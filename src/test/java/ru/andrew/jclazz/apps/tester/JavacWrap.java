@@ -53,4 +53,9 @@ public class JavacWrap extends Thread
     {
         return proc.getErrorStream();
     }
+
+    public InputStream getInputStream()
+    {
+        return proc.getInputStream();
+    }
 }
